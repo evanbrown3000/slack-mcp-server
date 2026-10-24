@@ -119,12 +119,19 @@ func cogHTTP(ctx context.Context,endpoint,method string,body any)([]byte,error){
  response,e:=(&http.Client{Timeout:45*time.Second}).Do(req);if e!=nil{return nil,e};defer response.Body.Close();b,e:=io.ReadAll(io.LimitReader(response.Body,2000000));if e!=nil{return nil,e};if response.StatusCode>=400{return nil,fmt.Errorf("domain API HTTP %d: %s",response.StatusCode,string(b))};return b,nil
 }
 func registerCompanyTools(s *mcpserver.MCPServer,p *provider.ApiProvider){
- projects:=os.Getenv("COGNILODE_PROJECTS_MCP_URL");if projects==""{return}
- ctx,cancel:=context.WithTimeout(context.Background(),8*time.Second);defer cancel();b,e:=cogHTTP(ctx,projects,"POST",map[string]any{"jsonrpc":"2.0","id":"slack-projects-discovery","method":"tools/list"});if e!=nil{return}
- var catalog struct{Result struct{Tools []mcp.Tool `json:"tools"`} `json:"result"`};if json.Unmarshal(b,&catalog)!=nil{return}
- for _,tool:=range catalog.Result.Tools {tool:=tool;s.AddTool(tool,func(ctx context.Context,r mcp.CallToolRequest)(*mcp.CallToolResult,error){
-  b,e:=cogHTTP(ctx,projects,"POST",map[string]any{"jsonrpc":"2.0","id":"slack-project-action","method":"tools/call","params":map[string]any{"name":tool.Name,"arguments":r.GetArguments()}});if e!=nil{return nil,e};var response struct{Result mcp.CallToolResult `json:"result"`;Error any `json:"error"`};if e=json.Unmarshal(b,&response);e!=nil{return nil,e};if response.Error!=nil{return nil,fmt.Errorf("project API: %v",response.Error)};return &response.Result,nil
- })}
+ projects:=os.Getenv("COGNILODE_PROJECTS_MCP_URL")
+ if projects!="" {
+  ctx,cancel:=context.WithTimeout(context.Background(),8*time.Second)
+  b,e:=cogHTTP(ctx,projects,"POST",map[string]any{"jsonrpc":"2.0","id":"slack-projects-discovery","method":"tools/list"});cancel()
+  if e==nil {
+   var catalog struct{Result struct{Tools []mcp.Tool `json:"tools"`} `json:"result"`}
+   if json.Unmarshal(b,&catalog)==nil {
+    for _,tool:=range catalog.Result.Tools {tool:=tool;s.AddTool(tool,func(ctx context.Context,r mcp.CallToolRequest)(*mcp.CallToolResult,error){
+     b,e:=cogHTTP(ctx,projects,"POST",map[string]any{"jsonrpc":"2.0","id":"slack-project-action","method":"tools/call","params":map[string]any{"name":tool.Name,"arguments":r.GetArguments()}});if e!=nil{return nil,e};var response struct{Result mcp.CallToolResult `json:"result"`;Error any `json:"error"`};if e=json.Unmarshal(b,&response);e!=nil{return nil,e};if response.Error!=nil{return nil,fmt.Errorf("project API: %v",response.Error)};return &response.Result,nil
+    })}
+   }
+  }
+ }
  taskflow:=strings.TrimRight(os.Getenv("COGNILODE_TASKFLOW_URL"),"/");if taskflow==""{return};registerSlackPlanTools(s,p,taskflow)
  s.AddTool(mcp.NewTool("taskflow_read",mcp.WithDescription("Read the actual native TaskFlow plan(s) or revision history. Multiple plans may belong to one Project; no Slack-owned plan copy."),mcp.WithReadOnlyHintAnnotation(true),mcp.WithString("plan_id"),mcp.WithBoolean("revisions")),func(ctx context.Context,r mcp.CallToolRequest)(*mcp.CallToolResult,error){path:="snapshot";if r.GetBool("revisions",false){path="revisions"};b,e:=cogHTTP(ctx,taskflow+"/api/taskflow/"+path+"?plan_id="+url.QueryEscape(r.GetString("plan_id","")),"GET",nil);if e!=nil{return nil,e};return mcp.NewToolResultText(string(b)),nil})
  s.AddTool(mcp.NewTool("taskflow_update",mcp.WithDescription("Apply a reviewed native plan revision or step signal through TaskFlow's existing API and revision checks. Include Slack source references in its native payload. Does not create another scheduler, silently infer human authority, or dispatch an agent."),mcp.WithReadOnlyHintAnnotation(false),mcp.WithString("operation",mcp.Required(),mcp.Enum("plan_revision","signal")),mcp.WithString("payload_json",mcp.Required(),mcp.Description("Existing native TaskFlow ingest or signal payload. Plan revisions retain expected_revision and original plan source."))),func(ctx context.Context,r mcp.CallToolRequest)(*mcp.CallToolResult,error){var body any;if e:=json.Unmarshal([]byte(r.GetString("payload_json","")),&body);e!=nil{return nil,e};path:="signal";switch r.GetString("operation",""){case "plan_revision":path="plans/ingest";case "signal":default:return nil,fmt.Errorf("unknown TaskFlow operation")};b,e:=cogHTTP(ctx,taskflow+"/api/taskflow/"+path,"POST",body);if e!=nil{return nil,e};return mcp.NewToolResultText(string(b)),nil})
