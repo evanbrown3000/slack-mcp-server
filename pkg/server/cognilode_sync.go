@@ -28,6 +28,11 @@ func startTaskflowMirrorSync(s *mcpserver.MCPServer,p *provider.ApiProvider,base
   }
   return cogJSON(map[string]any{"mirrors":len(response.Mirrors),"outcomes":outcomes,"provider_prompts":0}),nil
  }
+ var statusMu sync.RWMutex
+ var lastStatus any=map[string]any{"state":"starting"}
+ execute:=syncNow
+ syncNow=func(ctx context.Context)(*mcp.CallToolResult,error){result,err:=execute(ctx);status:=map[string]any{"checked_at":time.Now().UTC().Format(time.RFC3339),"result":result};if err!=nil{status["error"]=err.Error()};statusMu.Lock();lastStatus=status;statusMu.Unlock();return result,err}
+ s.AddTool(mcp.NewTool("taskflow_sync_status",mcp.WithDescription("Read the automatic TaskFlow-to-Slack observer's last actual result or failure without issuing provider requests."),mcp.WithReadOnlyHintAnnotation(true)),func(ctx context.Context,r mcp.CallToolRequest)(*mcp.CallToolResult,error){statusMu.RLock();defer statusMu.RUnlock();return cogJSON(lastStatus),nil})
  s.AddTool(mcp.NewTool("taskflow_sync_now",mcp.WithDescription("Reconcile explicitly bound TaskFlow plan messages with current native plan/progress. The same observer runs every 30 seconds. Only changed source cursors cause Slack writes; source acknowledgements do not echo as new plan changes. No prompts or new scheduler."),mcp.WithReadOnlyHintAnnotation(false)),func(ctx context.Context,r mcp.CallToolRequest)(*mcp.CallToolResult,error){return syncNow(ctx)})
  mirrorSyncOnce.Do(func(){go func(){for{ctx,cancel:=context.WithTimeout(context.Background(),50*time.Second);_,_=syncNow(ctx);cancel();time.Sleep(30*time.Second)}}()})
 }
