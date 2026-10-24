@@ -633,6 +633,8 @@ func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger, enabledToo
 		mcp.WithMIMEType("text/csv"),
 	), conversationsHandler.UsersResource)
 
+	registerCognilode(s, provider, logger)
+
 	return &MCPServer{
 		server: s,
 		logger: logger,

@@ -1,0 +1,29 @@
+name: Cognilode upstream extension build
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Format and qualify upstream extensions
+        run: |
+          gofmt -w pkg/server/cognilode.go pkg/provider/cognilode.go pkg/server/cognilode_test.go
+          go test ./pkg/server ./pkg/provider -run 'TestRenderedConversation' -count=1
+      - name: Build existing upstream server with extensions
+        env:
+          CGO_ENABLED: '0'
+        run: go build -trimpath -ldflags='-s -w' -o mcp-server ./cmd/slack-mcp-server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cognilode-slack-mcp-linux-amd64
+          path: mcp-server
+          retention-days: 3
