@@ -557,7 +557,8 @@ func (ch *ConversationsHandler) ConversationsHistoryHandler(ctx context.Context,
 
 	messages := ch.convertMessagesFromHistory(ctx, history.Messages, params.channel, params.activity)
 
-	if len(messages) > 0 && history.HasMore {
+	if history.HasMore {
+		if len(messages)==0 {messages=append(messages,Message{})}
 		messages[len(messages)-1].Cursor = history.ResponseMetaData.NextCursor
 	}
 	return marshalMessagesToCSV(messages)
@@ -595,7 +596,8 @@ func (ch *ConversationsHandler) ConversationsRepliesHandler(ctx context.Context,
 	ch.logger.Debug("Fetched conversation replies", zap.Int("count", len(replies)))
 
 	messages := ch.convertMessagesFromHistory(ctx, replies, params.channel, params.activity)
-	if len(messages) > 0 && hasMore {
+	if hasMore {
+		if len(messages)==0 {messages=append(messages,Message{})}
 		messages[len(messages)-1].Cursor = nextCursor
 	}
 	return marshalMessagesToCSV(messages)
