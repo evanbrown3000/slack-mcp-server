@@ -40,5 +40,5 @@ func registerSlackPlanTools(s *mcpserver.MCPServer,p *provider.ApiProvider,base 
 
 func readableTaskflow(b []byte)(*mcp.CallToolResult,error){
  var v struct{Plans []map[string]any `json:"plans"`;Steps []map[string]any `json:"steps"`;Work []map[string]any `json:"recent_work"`};if e:=json.Unmarshal(b,&v);e!=nil{return nil,e};var out strings.Builder
- for _,p:=range v.Plans{fmt.Fprintf(&out,"## %v\nPlan: %v | Revision: %v | Status: %v\n\n%v\n",p["title"],p["plan_id"],p["revision"],p["status"],p["abstract"]);for _,step:=range v.Steps{if step["plan_id"]==p["plan_id"]{fmt.Fprintf(&out,"\n### %v [%v]\n%v\n",step["title"],step["status"],step["details"])}}};for _,work:=range v.Work{fmt.Fprintf(&out,"\n### Recent work — %v\n%v\n",work["event_kind"],work["text"])};return mcp.NewToolResultText(out.String()),nil
+ for _,p:=range v.Plans{fmt.Fprintf(&out,"## %v\nPlan: %v | Revision: %v | Status: %v\n\n%v\n",p["title"],p["plan_id"],p["revision"],p["status"],p["abstract"]);for _,step:=range v.Steps{if step["plan_id"]==p["plan_id"]{fmt.Fprintf(&out,"\n### %v [%v]\nStep ID: %v | Owner: %v\n%v\n",step["title"],step["status"],step["step_id"],step["assignee"],step["details"])}}};for _,work:=range v.Work{fmt.Fprintf(&out,"\n### Recent work — %v\n%v\n",work["event_kind"],work["text"])};return mcp.NewToolResultText(out.String()),nil
 }
