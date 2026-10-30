@@ -109,6 +109,7 @@ func registerCognilode(s *mcpserver.MCPServer,p *provider.ApiProvider,logger *za
    result["outcomes"]=outcomes;result["all_decisions_processed"]=len(outcomes)==len(decisions);return cogJSON(result),nil
   })
  registerCompanyTools(s,p)
+ registerSlackAutonomy(s,p,logger)
 }
 
 // API-owned operations remain in the existing Company/Projects/TaskFlow services.
