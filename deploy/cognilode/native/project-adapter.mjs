@@ -5,8 +5,8 @@
  */
 import {executeNativeSlack} from './native-slack.mjs';
 
-const OPERATIONS=new Set(['read','create','rename','delete']);
-const TOOL_OPERATIONS={slack_project_read:'read',slack_project_create:'create',slack_project_rename:'rename',slack_project_archive:'delete'};
+const OPERATIONS=new Set(['read','create','rename','archive']);
+const TOOL_OPERATIONS={slack_project_read:'read',slack_project_create:'create',slack_project_rename:'rename',slack_project_archive:'archive'};
 function projectSchema(operation){
   const existing=operation!=='create';
   return {type:'object',properties:{
@@ -15,7 +15,7 @@ function projectSchema(operation){
     canonical_slug:{type:'string',pattern:'^[a-z0-9][a-z0-9_-]{0,74}$'},
     expected_slack_name:{type:'string',pattern:'^proj-[a-z0-9][a-z0-9_-]{0,74}$'},
     display_name:{type:'string'},is_private:{type:'boolean'},
-    permanent:{type:'boolean',description:'Retained request intent only; Slack removal always archives and reports archival semantics.'},
+    permanent:{type:'boolean',description:'Not a deletion request: project archive preserves channel and content.'},
     external_ids:{type:'object',properties:{slack:{type:'object',properties:{
       id:{type:'string',pattern:'^[CG][A-Z0-9]{8,}$'},
       account_id:{type:'string',pattern:'^T[A-Z0-9]{8,}$'}},
@@ -28,9 +28,9 @@ export const SLACK_PROJECT_CATALOG=Object.entries(TOOL_OPERATIONS).map(([name,op
     read:'Read an exact Company-bound Slack project channel and verify its actual workspace/account identity. Returns native observation; does not commit Company project state.',
     create:'Create the exact supplied proj-* channel and read back its identity and name. Company retains operation deduplication and project bindings; this adapter never retries.',
     rename:'Rename the exact Slack project channel bound to the observed account and verify its new proj-* name. Returns a provider receipt for Company to consume.',
-    delete:'Archive the exact Slack project channel and verify its archived state. This preserves channel content and never claims permanent deletion or commits Company state.'
+    archive:'Archive the exact Slack project channel and verify its archived state. This preserves channel content and never claims permanent deletion or commits Company state.'
   }[operation],inputSchema:projectSchema(operation),annotations:{readOnlyHint:operation==='read',
-    destructiveHint:['rename','delete'].includes(operation),idempotentHint:operation==='read',openWorldHint:true}
+    destructiveHint:['rename','archive'].includes(operation),idempotentHint:operation==='read',openWorldHint:true}
 }));
 export const SLACK_PROJECT_NAMES=new Set(Object.keys(TOOL_OPERATIONS));
 const required=(value,field)=>{
@@ -57,7 +57,7 @@ function observation(payload,identity,externalId,readback,{operation,nativeAccep
   const state=channel?.is_archived===true?'archived':channel?.is_archived===false?'active':'unknown';
   const name=typeof channel?.name==='string'?channel.name:null;
   const valueMatches=expectedName===null||name===expectedName;
-  const stateMatches=operation!=='delete'||state==='archived';
+  const stateMatches=operation!=='archive'||state==='archived';
   const verified=readback?.verified===true&&identityMatches&&name!==null&&state!=='unknown'&&valueMatches&&stateMatches;
   return {
     ok:verified,provider:'slack',verified,operation,request_id:payload.request_id,
@@ -66,7 +66,7 @@ function observation(payload,identity,externalId,readback,{operation,nativeAccep
     account_id:identity.team_id,name,observed_state:state,
     observed_at:channel?(readback.observed_at||null):null,
     native_acceptance:nativeAcceptance,readback,automatic_retry:false,company_commit:false,
-    ...(operation==='delete'?{deletion_semantics:'archival',permanent_deletion:false,permanent_requested:payload.permanent===true}:{}),
+    ...(operation==='archive'?{archive_semantics:'preserves_channel_and_content',permanent_deletion:false}:{}),
     ...(verified?{}:{code:'slack_project_readback_unverified',reconcile_before_retry:nativeAcceptance})
   };
 }
@@ -80,7 +80,7 @@ export function slackProjectFailure(operation,payload,error,{identity=null,exter
     native_acceptance:mutationAttempted?null:false,mutation_attempted:mutationAttempted,
     code:String(error?.message||error),reconcile_before_retry:mutationAttempted,
     automatic_retry:false,company_commit:false,
-    ...(operation==='delete'?{deletion_semantics:'archival',permanent_deletion:false}:{} )};
+    ...(operation==='archive'?{archive_semantics:'preserves_channel_and_content',permanent_deletion:false}:{} )};
 }
 
 export function executeSlackProjectTool(name,args,api){
@@ -123,7 +123,7 @@ export async function executeSlackProjectAdapter(operation,payload,api){
       {operation,nativeAcceptance:mutation.native_acceptance===true,expectedName});
   }catch(error){
     // Resolve already-archived status with an exact read, never another write.
-    if(operation==='delete'&&String(error.message||error)==='slack_channel_archive:already_archived'){
+    if(operation==='archive'&&String(error.message||error)==='slack_channel_archive:already_archived'){
       const read=await executeNativeSlack('slack_channel_info',{channel:externalId},api).catch(()=>null);
       if(read)return {...observation(payload,identity,externalId,{verified:read.channel?.id===externalId,
         channel:read.channel||null,observed_at:new Date().toISOString()},{operation}),native_mutation:'already_archived'};
