@@ -17,7 +17,7 @@ const lim = {type:'integer',minimum:1,maximum:100};
 const channelId = {type:'string',pattern:'^[CGD][A-Z0-9]{8,}$'};
 const channelName = {type:'string',minLength:1,maxLength:80,pattern:'^[a-z0-9_-]+$'};
 const READ_ONLY_NAMES = new Set(['slack_channel_delete_prepare','slack_channel_summary_source','slack_identity','slack_channels_list','slack_channel_info','slack_history','slack_replies','slack_search','slack_get_permalink','slack_file_info','slack_file_read']);
-const DESTRUCTIVE_NAMES = new Set(['slack_update_message','slack_channel_rename','slack_channel_archive','slack_channel_set_topic','slack_channel_set_purpose']);
+const DESTRUCTIVE_NAMES = new Set(['slack_delete_message','slack_update_message','slack_channel_rename','slack_channel_archive','slack_channel_set_topic','slack_channel_set_purpose']);
 const name = (name,description,properties,required) => ({name,description,inputSchema:obj(properties,required),
   annotations:{readOnlyHint:READ_ONLY_NAMES.has(name),destructiveHint:DESTRUCTIVE_NAMES.has(name),
     idempotentHint:READ_ONLY_NAMES.has(name),openWorldHint:true}});
@@ -35,7 +35,8 @@ export const NATIVE_CATALOG = [
   name('slack_file_info','Read the metadata of an exact attached Slack file through the connected account. Private download credentials remain in the existing Slack capability.',{file_id:{type:'string',pattern:'^F[A-Z0-9]{8,}$'}},['file_id']),
   name('slack_file_read','Read an attached Slack file completely through explicit bounded pages. Text uses UTF-8 boundaries; choose base64 for binary files. Continue with returned continuation arguments and source_revision to reject changed files.',{file_id:{type:'string',pattern:'^F[A-Z0-9]{8,}$'},byte_offset:{type:'integer',minimum:0},limit_bytes:{type:'integer',minimum:4,maximum:262144,default:65536},source_revision:{type:'string',pattern:'^[a-f0-9]{64}$'},encoding:{type:'string',enum:['utf-8','base64'],default:'utf-8'}},['file_id']),
   name('slack_post_message','Post an actual message, optionally in an existing thread, with Slack-side identity/ts and readback. Mutating calls are never automatically retried.',{channel:s,text:s,thread_ts:s,reply_broadcast:b,client_msg_id:s},['channel','text']),
-  name('slack_update_message','Edit an existing Slack message using official chat.update and read back the exact message. Supply its parent thread_ts for a reply when known; native response context takes precedence.',{channel:s,ts:s,text:s,thread_ts:s},['channel','ts','text']),
+  name('slack_delete_message','Delete one exact Slack message using the existing authenticated native Slack account; never archive or delete its channel.',{channel:channelId,ts:s},['channel','ts']),
+   name('slack_update_message','Edit an existing Slack message using official chat.update and read back the exact message. Supply its parent thread_ts for a reply when known; native response context takes precedence.',{channel:s,ts:s,text:s,thread_ts:s},['channel','ts','text']),
   name('slack_channel_create','Create one authorized public/private Slack channel and read back its identity; no name-based implicit reconciliation.',{name:s,is_private:b},['name']),
   name('slack_channel_join','Join an existing Slack channel as the authorized Slack account.',{channel:s},['channel']),
   name('slack_channel_invite','Invite specific Slack user IDs to one existing channel.',{channel:s,users:{type:'array',items:s,minItems:1,maxItems:100}},['channel','users']),
@@ -144,6 +145,15 @@ export async function executeNativeSlack(name,args,api) {
   let r;
   if(name==='slack_channel_delete_prepare')return {...annotation,...await deletionPreparation(a,api)};
   if(name==='slack_channel_summary_source')return {...annotation,...await channelSummarySource(a,api)};
+  if(name==='slack_delete_message'){
+    const channel=requireChannelId(a.channel),ts=requireString(a.ts,'ts');
+    if(!/^\d{10,}\.\d+$/.test(ts))throw new Error('slack_message_ts_invalid');
+    const r=await api.chat.delete({channel,ts});
+    if(r.ok!==true)throw new Error('slack_delete_message:'+String(r.error||'unavailable'));
+    return {...annotation,ok:true,mutation:'deleted_message',channel,ts,native_acceptance:true,
+      verified:r.channel===channel&&r.ts===ts,automatic_retry:false,
+      observed_at:new Date().toISOString(),reconcile_before_retry:r.channel!==channel||r.ts!==ts};
+  }
   if(name==='slack_file_info')return {...annotation,...await slackFileInfo(a,api)};
   if(name==='slack_file_read')return {...annotation,...await slackFileRead(a,api)};
   if(name==='slack_identity'){
