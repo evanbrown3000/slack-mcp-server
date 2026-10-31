@@ -9,21 +9,24 @@
  */
 
 import {downloadSlackFile,slackFileInfo,slackFileRead} from './native-slack-files.mjs';
-import {deletionPreparation,channelSummarySource} from './channel-disposition.mjs';
+import {channelSummarySource} from './channel-disposition.mjs';
+import {removeSlackChannel,verifySlackChannelRemoved} from './channel-removal.mjs';
 const obj = (properties,required=[]) => ({type:'object',properties,required,additionalProperties:false});
 const s = {type:'string'};
 const b = {type:'boolean'};
 const lim = {type:'integer',minimum:1,maximum:100};
 const channelId = {type:'string',pattern:'^[CGD][A-Z0-9]{8,}$'};
 const channelName = {type:'string',minLength:1,maxLength:80,pattern:'^[a-z0-9_-]+$'};
-const READ_ONLY_NAMES = new Set(['slack_channel_delete_prepare','slack_channel_summary_source','slack_identity','slack_channels_list','slack_channel_info','slack_history','slack_replies','slack_search','slack_get_permalink','slack_file_info','slack_file_read']);
-const DESTRUCTIVE_NAMES = new Set(['slack_delete_message','slack_update_message','slack_channel_rename','slack_channel_archive','slack_channel_set_topic','slack_channel_set_purpose']);
+const READ_ONLY_NAMES = new Set(['slack_channel_verify_deleted','slack_channel_summary_source','slack_identity','slack_channels_list','slack_channel_info','slack_history','slack_replies','slack_search','slack_get_permalink','slack_file_info','slack_file_read']);
+const DESTRUCTIVE_NAMES = new Set(['slack_channel_delete','slack_channel_delete_archived','slack_delete_message','slack_update_message','slack_channel_rename','slack_channel_archive','slack_channel_set_topic','slack_channel_set_purpose']);
 const name = (name,description,properties,required) => ({name,description,inputSchema:obj(properties,required),
   annotations:{readOnlyHint:READ_ONLY_NAMES.has(name),destructiveHint:DESTRUCTIVE_NAMES.has(name),
     idempotentHint:READ_ONLY_NAMES.has(name),openWorldHint:true}});
 
 export const NATIVE_CATALOG = [
-   name('slack_channel_delete_prepare','Read exact channel identity and prepare Slack Free Workspace Owner/Admin native permanent deletion; no mutation and no false archive.',{channel:channelId},['channel']),
+   name('slack_channel_delete','Permanently delete one exact authorized Slack channel. Never archive as a substitute.',{channel:channelId,workspace_id:s,expected_name:channelName,request_id:s,permanent:b,confirmation:s},['channel','workspace_id','expected_name','request_id','permanent','confirmation']),
+   name('slack_channel_delete_archived','Permanently delete an existing archived channel using the same native provider operation.',{channel:channelId,workspace_id:s,expected_name:channelName,request_id:s,permanent:b,confirmation:s},['channel','workspace_id','expected_name','request_id','permanent','confirmation']),
+   name('slack_channel_verify_deleted','Verify native channel absence from an accepted deletion receipt, without repeating the write.',{channel:channelId,workspace_id:s,deletion_receipt:{type:'object'}},['channel','workspace_id','deletion_receipt']),
    name('slack_channel_summary_source','Read original Slack channel messages and optional replies as a bounded complete source page, with continuation.',{channel:channelId,cursor:s,limit:lim,oldest:s,latest:s,include_threads:b},['channel']),
   name('slack_identity','Read the actual connected Slack workspace and account identity with auth.test. The observed team_id is the project-binding account_id; no default account is inferred.',{},[]),
   name('slack_channels_list','List actual Slack conversations with a provider continuation cursor; membership/visibility follows the authorized Slack account.',{cursor:s,limit:lim,types:s},[]),
@@ -94,6 +97,7 @@ export function createNativeSlackClient(token, transport=fetch) {
     files:{info:p=>call('files.info',p),download:(url,offset,limit,signal)=>downloadSlackFile(token,transport,url,offset,limit,signal)},
     conversations:Object.fromEntries(['list','info','history','replies','create','join','invite','rename','archive','unarchive','setTopic','setPurpose'].map(x=>[x,p=>call('conversations.'+x,p)])),
     chat:Object.fromEntries(['postMessage','update','delete','getPermalink'].map(x=>[x,p=>call('chat.'+x,p)])),
+    channelDelete:p=>call('channels.delete',p),
     search:{messages:p=>call('search.messages',p)}
   };
 }
@@ -143,7 +147,10 @@ export async function executeNativeSlack(name,args,api) {
   if(!NATIVE_NAMES.has(name))throw new Error('unknown_native_slack_tool');
   const a=args||{};
   let r;
-  if(name==='slack_channel_delete_prepare')return {...annotation,...await deletionPreparation(a,api)};
+  if(name==='slack_channel_delete'||name==='slack_channel_delete_archived')
+    return {...annotation,...await removeSlackChannel({...a,archived_only:name==='slack_channel_delete_archived'},api)};
+  if(name==='slack_channel_verify_deleted')
+    return {...annotation,...await verifySlackChannelRemoved(a,api)};
   if(name==='slack_channel_summary_source')return {...annotation,...await channelSummarySource(a,api)};
   if(name==='slack_delete_message'){
     const channel=requireChannelId(a.channel),ts=requireString(a.ts,'ts');
