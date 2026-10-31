@@ -11,19 +11,22 @@
 import {downloadSlackFile,slackFileInfo,slackFileRead} from './native-slack-files.mjs';
 import {channelSummarySource} from './channel-disposition.mjs';
 import {removeSlackChannel,verifySlackChannelRemoved} from './channel-removal.mjs';
+import {planChannelRemoval,applyChannelRemoval} from './channel-pattern-removal.mjs';
 const obj = (properties,required=[]) => ({type:'object',properties,required,additionalProperties:false});
 const s = {type:'string'};
 const b = {type:'boolean'};
 const lim = {type:'integer',minimum:1,maximum:100};
 const channelId = {type:'string',pattern:'^[CGD][A-Z0-9]{8,}$'};
 const channelName = {type:'string',minLength:1,maxLength:80,pattern:'^[a-z0-9_-]+$'};
-const READ_ONLY_NAMES = new Set(['slack_channel_verify_deleted','slack_channel_summary_source','slack_identity','slack_channels_list','slack_channel_info','slack_history','slack_replies','slack_search','slack_get_permalink','slack_file_info','slack_file_read']);
-const DESTRUCTIVE_NAMES = new Set(['slack_channel_delete','slack_channel_delete_archived','slack_delete_message','slack_update_message','slack_channel_rename','slack_channel_archive','slack_channel_set_topic','slack_channel_set_purpose']);
+const READ_ONLY_NAMES = new Set(['slack_channel_delete_pattern_plan','slack_channel_verify_deleted','slack_channel_summary_source','slack_identity','slack_channels_list','slack_channel_info','slack_history','slack_replies','slack_search','slack_get_permalink','slack_file_info','slack_file_read']);
+const DESTRUCTIVE_NAMES = new Set(['slack_channel_delete_pattern_apply','slack_channel_delete','slack_channel_delete_archived','slack_delete_message','slack_update_message','slack_channel_rename','slack_channel_archive','slack_channel_set_topic','slack_channel_set_purpose']);
 const name = (name,description,properties,required) => ({name,description,inputSchema:obj(properties,required),
   annotations:{readOnlyHint:READ_ONLY_NAMES.has(name),destructiveHint:DESTRUCTIVE_NAMES.has(name),
     idempotentHint:READ_ONLY_NAMES.has(name),openWorldHint:true}});
 
 export const NATIVE_CATALOG = [
+   name('slack_channel_delete_pattern_plan','Preview a bounded full-page Slack channel name-pattern selection; excludes Company project channels.',{workspace_id:s,pattern:s,mode:{type:'string',enum:['glob','regex']},include_active:b},['workspace_id','pattern','mode','include_active']),
+   name('slack_channel_delete_pattern_apply','Delete exactly the selected Slack channels from a fresh provider-reconciled, SHA256-confirmed manifest.',{selection:{type:'object'},confirmation:s,request_id:s},['selection','confirmation','request_id']),
    name('slack_channel_delete','Permanently delete one exact authorized Slack channel. Never archive as a substitute.',{channel:channelId,workspace_id:s,expected_name:channelName,request_id:s,permanent:b,confirmation:s},['channel','workspace_id','expected_name','request_id','permanent','confirmation']),
    name('slack_channel_delete_archived','Permanently delete an existing archived channel using the same native provider operation.',{channel:channelId,workspace_id:s,expected_name:channelName,request_id:s,permanent:b,confirmation:s},['channel','workspace_id','expected_name','request_id','permanent','confirmation']),
    name('slack_channel_verify_deleted','Verify native channel absence from an accepted deletion receipt, without repeating the write.',{channel:channelId,workspace_id:s,deletion_receipt:{type:'object'}},['channel','workspace_id','deletion_receipt']),
@@ -147,6 +150,8 @@ export async function executeNativeSlack(name,args,api) {
   if(!NATIVE_NAMES.has(name))throw new Error('unknown_native_slack_tool');
   const a=args||{};
   let r;
+  if(name==='slack_channel_delete_pattern_plan')return {...annotation,...await planChannelRemoval(a,api)};
+  if(name==='slack_channel_delete_pattern_apply')return {...annotation,...await applyChannelRemoval(a,api)};
   if(name==='slack_channel_delete'||name==='slack_channel_delete_archived')
     return {...annotation,...await removeSlackChannel({...a,archived_only:name==='slack_channel_delete_archived'},api)};
   if(name==='slack_channel_verify_deleted')
