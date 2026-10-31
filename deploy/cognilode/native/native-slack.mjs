@@ -9,6 +9,7 @@
  */
 
 import {downloadSlackFile,slackFileInfo,slackFileRead} from './native-slack-files.mjs';
+import {deletionPreparation,channelSummarySource} from './channel-disposition.mjs';
 const obj = (properties,required=[]) => ({type:'object',properties,required,additionalProperties:false});
 const s = {type:'string'};
 const b = {type:'boolean'};
@@ -22,6 +23,8 @@ const name = (name,description,properties,required) => ({name,description,inputS
     idempotentHint:READ_ONLY_NAMES.has(name),openWorldHint:true}});
 
 export const NATIVE_CATALOG = [
+   name('slack_channel_delete_prepare','Read exact channel identity and prepare Slack Free Workspace Owner/Admin native permanent deletion; no mutation and no false archive.',{channel:channelId},['channel']),
+   name('slack_channel_summary_source','Read original Slack channel messages and optional replies as a bounded complete source page, with continuation.',{channel:channelId,cursor:s,limit:lim,oldest:s,latest:s,include_threads:b},['channel']),
   name('slack_identity','Read the actual connected Slack workspace and account identity with auth.test. The observed team_id is the project-binding account_id; no default account is inferred.',{},[]),
   name('slack_channels_list','List actual Slack conversations with a provider continuation cursor; membership/visibility follows the authorized Slack account.',{cursor:s,limit:lim,types:s},[]),
   name('slack_channel_info','Read the exact Slack channel identity, name, archival state, topic and purpose.',{channel:s},['channel']),
@@ -139,6 +142,8 @@ export async function executeNativeSlack(name,args,api) {
   if(!NATIVE_NAMES.has(name))throw new Error('unknown_native_slack_tool');
   const a=args||{};
   let r;
+  if(name==='slack_channel_delete_prepare')return {...annotation,...await deletionPreparation(a,api)};
+  if(name==='slack_channel_summary_source')return {...annotation,...await channelSummarySource(a,api)};
   if(name==='slack_file_info')return {...annotation,...await slackFileInfo(a,api)};
   if(name==='slack_file_read')return {...annotation,...await slackFileRead(a,api)};
   if(name==='slack_identity'){
