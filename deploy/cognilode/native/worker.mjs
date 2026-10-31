@@ -16,7 +16,7 @@ export default {async fetch(request,env){
  if(auth!=='Bearer '+env.OPERATOR_TOKEN&&auth!=='Bearer '+env.SLACK_CLIENT_KEY&&url.searchParams.get('access_key')!==env.SLACK_CLIENT_KEY)return new Response('Unauthorized',{status:401});
  if(request.method!=='POST')return new Response('Method not allowed',{status:405});
  let rpc;try{rpc=await request.json();}catch{return new Response('Invalid JSON',{status:400});}
- const projectRoute=/^\/v1\/(read|create|rename|delete|verify_deleted)$/.exec(url.pathname);
+ const projectRoute=/^\/v1\/(read|create|rename|archive|delete|verify_deleted)$/.exec(url.pathname);
  if(projectRoute){
   try{
    const client=await authorizedSlackClient(env);
@@ -46,7 +46,7 @@ export default {async fetch(request,env){
    ok:false,provider:'slack',verified:false,mutation_attempted:null,
    error:String(error.message||error),reconcile_before_retry:true,automatic_retry:false});
   if(SLACK_PROJECT_NAMES.has(rpc.params?.name)){
-   const operation=rpc.params.name==='slack_project_archive'?'delete':rpc.params.name.slice('slack_project_'.length);
+   const operation=rpc.params.name==='slack_project_archive'?'archive':rpc.params.name.slice('slack_project_'.length);
    return result(rpc.id,slackProjectFailure(operation,rpc.params.arguments,error));
   }
   return result(rpc.id,{ok:false,error:String(error.message||error)});
