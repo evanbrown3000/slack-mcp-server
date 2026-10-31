@@ -16,7 +16,7 @@ const b = {type:'boolean'};
 const lim = {type:'integer',minimum:1,maximum:100};
 const channelId = {type:'string',pattern:'^[CGD][A-Z0-9]{8,}$'};
 const channelName = {type:'string',minLength:1,maxLength:80,pattern:'^[a-z0-9_-]+$'};
-const READ_ONLY_NAMES = new Set(['slack_identity','slack_channels_list','slack_channel_info','slack_history','slack_replies','slack_search','slack_get_permalink','slack_file_info','slack_file_read']);
+const READ_ONLY_NAMES = new Set(['slack_channel_delete_prepare','slack_channel_summary_source','slack_identity','slack_channels_list','slack_channel_info','slack_history','slack_replies','slack_search','slack_get_permalink','slack_file_info','slack_file_read']);
 const DESTRUCTIVE_NAMES = new Set(['slack_update_message','slack_channel_rename','slack_channel_archive','slack_channel_set_topic','slack_channel_set_purpose']);
 const name = (name,description,properties,required) => ({name,description,inputSchema:obj(properties,required),
   annotations:{readOnlyHint:READ_ONLY_NAMES.has(name),destructiveHint:DESTRUCTIVE_NAMES.has(name),
