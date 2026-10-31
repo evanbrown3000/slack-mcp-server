@@ -97,7 +97,7 @@ export function createNativeSlackClient(token, transport=fetch) {
     files:{info:p=>call('files.info',p),download:(url,offset,limit,signal)=>downloadSlackFile(token,transport,url,offset,limit,signal)},
     conversations:Object.fromEntries(['list','info','history','replies','create','join','invite','rename','archive','unarchive','setTopic','setPurpose'].map(x=>[x,p=>call('conversations.'+x,p)])),
     chat:Object.fromEntries(['postMessage','update','delete','getPermalink'].map(x=>[x,p=>call('chat.'+x,p)])),
-    channelDelete:p=>call('channels.delete',p),
+    channelDelete:p=>call('conversations.delete',p),
     search:{messages:p=>call('search.messages',p)}
   };
 }
